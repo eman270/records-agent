@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: records-agent
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn agent:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: GOOGLE_GENAI_USE_ENTERPRISE
+        value: "False"
+      - key: SUPABASE_TABLE
+        value: employees
+      - key: SUPABASE_SEARCH_COLUMNS
+        value: name,department,location
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+
+  - type: web
+    name: records-agent-ui
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run streamlit_app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --server.enableCORS false --server.enableXsrfProtection false
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: GOOGLE_GENAI_USE_ENTERPRISE
+        value: "False"
+      - key: SUPABASE_TABLE
+        value: employees
+      - key: SUPABASE_SEARCH_COLUMNS
+        value: name,department,location
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
