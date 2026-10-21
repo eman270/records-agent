@@ -20,6 +20,8 @@ import urllib.request
 
 from dotenv import load_dotenv
 from google.adk.a2a.utils.agent_to_a2a import to_a2a
+from starlette.responses import HTMLResponse
+from starlette.routing import Route
 from google.adk.agents import Agent
 from google.adk.agents.invocation_context import LlmCallsLimitExceededError
 from google.adk.agents.run_config import RunConfig
@@ -211,6 +213,29 @@ def _advertised_endpoint() -> tuple[str, str, int]:
 
 _protocol, _host, _port = _advertised_endpoint()
 app = to_a2a(root_agent, host=_host, port=_port, protocol=_protocol)
+
+
+async def _home(_request):
+    """Browser visits are GET. The agent itself is a POST to this same path."""
+    return HTMLResponse(
+        """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Records agent</title>
+</head>
+<body>
+  <h1>Records agent</h1>
+  <p>This address is the employee lookup API.</p>
+  <p>Agent card: <a href="/.well-known/agent-card.json">/.well-known/agent-card.json</a></p>
+  <p>A question is sent as a POST to this page. Opening the page does not run one.</p>
+</body>
+</html>
+"""
+    )
+
+
+app.routes.append(Route("/", endpoint=_home, methods=["GET"]))
 
 
 async def run_question(message: str) -> dict:
