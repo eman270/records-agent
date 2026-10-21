@@ -1,13 +1,11 @@
 services:
   - type: web
     name: records-agent
-    runtime: python
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn agent:app --host 0.0.0.0 --port $PORT
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.12.7
       - key: GOOGLE_GENAI_USE_ENTERPRISE
         value: "False"
       - key: SUPABASE_TABLE
@@ -23,13 +21,11 @@ services:
 
   - type: web
     name: records-agent-ui
-    runtime: python
+    runtime: docker
+    dockerfilePath: ./Dockerfile.ui
+    dockerContext: .
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run streamlit_app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true --server.enableCORS false --server.enableXsrfProtection false
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.12.7
       - key: GOOGLE_GENAI_USE_ENTERPRISE
         value: "False"
       - key: SUPABASE_TABLE

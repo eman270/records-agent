@@ -1,0 +1,25 @@
+services:
+  records-agent:
+    build: .
+    ports:
+      - "8002:8002"
+    env_file:
+      - .env
+    environment:
+      PORT: "8002"
+      SUPABASE_TABLE: employees
+      SUPABASE_SEARCH_COLUMNS: name,department,location
+      A2A_PUBLIC_URL: http://127.0.0.1:8002
+
+  records-agent-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+    ports:
+      - "8502:8502"
+    env_file:
+      - .env
+    environment:
+      PORT: "8502"
+      SUPABASE_TABLE: employees
+      SUPABASE_SEARCH_COLUMNS: name,department,location
