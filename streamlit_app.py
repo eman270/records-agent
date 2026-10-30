@@ -21,6 +21,7 @@ st.write(
     "and location in the Supabase employees table."
 )
 
+user_id = st.text_input("User id", placeholder="eman")
 question = st.text_area(
     "Question",
     height=120,
@@ -28,6 +29,9 @@ question = st.text_area(
 )
 
 if st.button("Run", type="primary"):
+    if not user_id.strip():
+        st.warning("Enter a user id first.")
+        st.stop()
     if not question.strip():
         st.warning("Type a question first.")
         st.stop()
@@ -41,7 +45,7 @@ if st.button("Run", type="primary"):
     else:
         with st.spinner("Running the agent..."):
             try:
-                result = run_question_sync(question.strip())
+                result = run_question_sync(question.strip(), user_id.strip())
             except Exception as exc:
                 result = {
                     "answer": "(no response)",

@@ -10,6 +10,10 @@ services:
       SUPABASE_TABLE: employees
       SUPABASE_SEARCH_COLUMNS: name,department,location
       A2A_PUBLIC_URL: http://127.0.0.1:8002
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-https://us.cloud.langfuse.com}
+      LANGFUSE_TRACING_ENVIRONMENT: ${LANGFUSE_TRACING_ENVIRONMENT:-development}
 
   records-agent-ui:
     build:
@@ -23,3 +27,7 @@ services:
       PORT: "8502"
       SUPABASE_TABLE: employees
       SUPABASE_SEARCH_COLUMNS: name,department,location
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-https://us.cloud.langfuse.com}
+      LANGFUSE_TRACING_ENVIRONMENT: ${LANGFUSE_TRACING_ENVIRONMENT:-development}

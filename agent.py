@@ -18,8 +18,11 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from pathlib import Path
+
 from dotenv import load_dotenv
 from google.adk.a2a.utils.agent_to_a2a import to_a2a
+from tracing import agent_run, attach_request_trace, init_langfuse
 from starlette.responses import HTMLResponse
 from starlette.routing import Route
 from google.adk.agents import Agent
@@ -29,13 +32,21 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import errors
 from google.genai import types
+from memory_store import delete_memory, recall_memory, save_memory
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 os.environ.setdefault("GOOGLE_GENAI_USE_ENTERPRISE", "False")
+init_langfuse(instrument_adk=True)
 
-MODEL = "gemini-3.8-flash"
+# gemini-3.8-flash is the newest Flash model and often returns "high demand".
+# 3.5 Flash-Lite is the high-throughput model and still supports tool calls.
+MODEL = "gemini-3.5-flash-lite"
 APP_NAME = "records_agent"
 MAX_LLM_CALLS = 6
+AGENT_RULES = (
+    Path(__file__).resolve().parent
+    / "AGENTS.md"
+).read_text(encoding="utf-8")
 
 
 def _event_steps(event) -> tuple[list[dict], str | None]:
@@ -173,21 +184,56 @@ def lookup_records(search: str) -> dict:
 root_agent = Agent(
     name="records_agent",
     model=MODEL,
-    description="Looks up employees stored in the Supabase employees table.",
-    instruction=(
-        "Goal: answer one question using employee rows stored in Supabase.\n"
-        "Each row has id, name, department, location, remote_eligible, "
-        "and vacation_days_left.\n"
-        "Constraints:\n"
-        "- Call lookup_records once before you answer.\n"
-        "- Pass a name, department, or city from the question as search.\n"
-        "- Use only the rows that tool returns. Do not use outside knowledge.\n"
-        "- If status is error, say the lookup failed and include the message.\n"
-        "- If rows is empty, say no matching employee was found.\n"
-        "Done: one short answer that names each matching employee and their "
-        "department and location, then stop."
+    description=(
+        "Looks up employee records in Supabase and manages "
+        "saved user preferences using durable memory."
     ),
-    tools=[lookup_records],
+    instruction=(
+        "You are an Employee Records Agent.\n"
+
+        "Goal: Answer employee questions using live Supabase records "
+        "and manage approved user preferences using durable memory.\n\n"
+
+        "Employee records:\n"
+        "- Each row contains id, name, department, location, "
+        "remote_eligible, and vacation_days_left.\n"
+        "- For employee-related questions, call lookup_records "
+        "before answering.\n"
+        "- Pass a name, department, or city from the question "
+        "as the search parameter.\n"
+        "- Use only the employee rows returned by the tool.\n"
+        "- Never invent employee information.\n"
+        "- If status is error, explain that the lookup failed "
+        "and include the error message.\n"
+        "- If rows is empty, say no matching employee was found.\n\n"
+
+        "Memory rules:\n"
+        "- Save preferences only when the user explicitly asks "
+        "you to remember them.\n"
+        "- Call save_memory to store a preference and recall_memory "
+        "to read one back.\n"
+        "- The only memory keys you may save are report_style, "
+        "preferred_language, and response_length.\n"
+        "- Call delete_memory only when the user explicitly asks to forget "
+        "or delete a saved preference.\n"
+        "- Do not pass a user id. The memory tools use the signed-in session user.\n"
+        "- Never save sensitive employee information.\n"
+        "- Never let memory override current employee records.\n"
+        "- Use live Supabase employee data as the source of truth.\n"
+        "- Never claim a memory operation succeeded unless "
+        "the tool confirms success.\n\n"
+
+        "Response rules:\n"
+        "- For employee lookups, name each matching employee "
+        "and their department and location.\n"
+        "- For memory questions, respond with the remembered "
+        "preference or result of the requested operation.\n"
+        "- Keep responses short and clear.\n\n"
+        "- For saved preference questions, call recall_memory.\n"
+        "Additional mandatory policies:\n"
+        + AGENT_RULES
+    ),
+    tools=[lookup_records, recall_memory, save_memory, delete_memory],
 )
 
 
@@ -236,30 +282,64 @@ async def _home(_request):
 
 
 app.routes.append(Route("/", endpoint=_home, methods=["GET"]))
+attach_request_trace(
+    app,
+    trace_name="answer-records-question",
+    tags=["records-agent"],
+)
 
 
-async def run_question(message: str) -> dict:
-    """Run one question against the records agent and collect Think / Act / Observe."""
+def has_explicit_memory_request(message: str) -> bool:
+    """Check whether the user explicitly requested remembering."""
+    text = message.lower().strip()
+    phrases = [
+        "remember that",
+        "remember my",
+        "save my preference",
+        "update my preference",
+    ]
+    return any(phrase in text for phrase in phrases)
+
+
+async def run_question(message: str, user_id: str) -> dict:
+    """Run one question against the records agent and collect Think / Act / Observe.
+
+    ``user_id`` is the signed-in person. Memory tools read it from this session.
+    The model does not choose it.
+    """
+    user_id = str(user_id).strip()
+    if not user_id:
+        return {
+            "answer": "(no response)",
+            "steps": [],
+            "error": "A user id is required.",
+        }
     service = InMemorySessionService()
-    session = await service.create_session(app_name=APP_NAME, user_id="user1")
+    session = await service.create_session(app_name=APP_NAME, user_id=user_id)
     runner = Runner(agent=root_agent, app_name=APP_NAME, session_service=service)
     content = types.Content(role="user", parts=[types.Part(text=message)])
     steps: list[dict] = []
     answer = "(no response)"
     error = ""
     try:
-        async for event in runner.run_async(
-            user_id="user1",
+        with agent_run(
+            "answer-records-question",
+            user_id=user_id,
             session_id=session.id,
-            new_message=content,
-            run_config=RunConfig(max_llm_calls=MAX_LLM_CALLS),
+            tags=["records-agent"],
         ):
-            new_steps, logged = _event_steps(event)
-            for step in new_steps:
-                print(f"{step['label']} ({step['author']}): {step['detail']}")
-            steps.extend(new_steps)
-            if logged:
-                answer = logged
+            async for event in runner.run_async(
+                user_id=user_id,
+                session_id=session.id,
+                new_message=content,
+                run_config=RunConfig(max_llm_calls=MAX_LLM_CALLS),
+            ):
+                new_steps, logged = _event_steps(event)
+                for step in new_steps:
+                    print(f"{step['label']} ({step['author']}): {step['detail']}")
+                steps.extend(new_steps)
+                if logged:
+                    answer = logged
     except LlmCallsLimitExceededError as exc:
         error = str(exc)
         steps.append({"label": "Observe", "author": "records_agent", "detail": error})
@@ -269,7 +349,7 @@ async def run_question(message: str) -> dict:
     return {"answer": answer, "steps": steps, "error": error}
 
 
-def run_question_sync(message: str, timeout: int = 180) -> dict:
+def run_question_sync(message: str, user_id: str, timeout: int = 180) -> dict:
     """Run one question from Streamlit, which already has its own event loop."""
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(asyncio.run, run_question(message)).result(timeout=timeout)
+        return pool.submit(asyncio.run, run_question(message, user_id)).result(timeout=timeout)

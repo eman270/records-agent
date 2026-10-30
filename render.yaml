@@ -18,6 +18,14 @@ services:
         sync: false
       - key: SUPABASE_KEY
         sync: false
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false
+      - key: LANGFUSE_SECRET_KEY
+        sync: false
+      - key: LANGFUSE_BASE_URL
+        sync: false
+      - key: LANGFUSE_TRACING_ENVIRONMENT
+        value: production
 
   - type: web
     name: records-agent-ui
@@ -38,3 +46,11 @@ services:
         sync: false
       - key: SUPABASE_KEY
         sync: false
+      - key: LANGFUSE_PUBLIC_KEY
+        sync: false
+      - key: LANGFUSE_SECRET_KEY
+        sync: false
+      - key: LANGFUSE_BASE_URL
+        sync: false
+      - key: LANGFUSE_TRACING_ENVIRONMENT
+        value: production
